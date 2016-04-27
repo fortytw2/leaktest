@@ -1,16 +1,19 @@
 package leaktest
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
 
 type testReporter struct {
 	failed bool
+	msg    string
 }
 
 func (tr *testReporter) Errorf(format string, args ...interface{}) {
 	tr.failed = true
+	tr.msg = fmt.Sprintf(format, args)
 }
 
 func TestCheck(t *testing.T) {
