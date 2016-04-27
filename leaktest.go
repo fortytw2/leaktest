@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"testing"
 	"time"
 )
 
@@ -51,10 +50,16 @@ func interestingGoroutines() (gs []string) {
 	return
 }
 
+// ErrorReporter is a tiny subset of a testing.TB to make testing not such a
+// massive pain
+type ErrorReporter interface {
+	Errorf(format string, args ...interface{})
+}
+
 // Check snapshots the currently-running goroutines and returns a
 // function to be run at the end of tests to see whether any
 // goroutines leaked.
-func Check(t testing.TB) func() {
+func Check(t ErrorReporter) func() {
 	orig := map[string]bool{}
 	for _, g := range interestingGoroutines() {
 		orig[g] = true
