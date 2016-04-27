@@ -5,8 +5,8 @@ Refactored, tested variant of the goroutine leak detector found in the `cockroac
 source tree.
 
 Takes a snapshot of running goroutines at the start of a test, and at the end -
-compares the two and viola. Ignores runtime/sys goroutines. Doesn't place nice
-with `t.Parallel()` right now, but there are plans to do so
+compares the two and *voila*. Ignores runtime/sys goroutines. Doesn't play nice
+with `t.Parallel()` right now, but there are plans to do so.
 
 ### Example
 
