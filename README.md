@@ -20,7 +20,7 @@ func TestPool(t *testing.T) {
         for {
             time.Sleep(time.Second)
         }
-    }
+    }()
 }
 ```
 
