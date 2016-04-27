@@ -8,6 +8,12 @@ Takes a snapshot of running goroutines at the start of a test, and at the end -
 compares the two and *voila*. Ignores runtime/sys goroutines. Doesn't play nice
 with `t.Parallel()` right now, but there are plans to do so.
 
+### Installation
+
+```
+go get -u github.com/fortytw2/leaktest
+```
+
 ### Example
 
 This test fails, because it leaks a goroutine :o
@@ -27,4 +33,4 @@ func TestPool(t *testing.T) {
 
 LICENSE
 ------
-Header in leaktest.go - Apache something, per the Go Authors
+Same BSD-style as Go, see LICENSE
