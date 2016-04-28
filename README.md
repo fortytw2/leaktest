@@ -1,7 +1,7 @@
 Leaktest
 ------
 
-Refactored, tested variant of the goroutine leak detector found in the `cockroachdb`
+Refactored, tested variant of the goroutine leak detector found in both `net/http` tests and the `cockroachdb`
 source tree.
 
 Takes a snapshot of running goroutines at the start of a test, and at the end -
