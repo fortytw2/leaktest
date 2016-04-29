@@ -1,12 +1,18 @@
 Leaktest
 ------
 
-Refactored, tested variant of the goroutine leak detector found in the `cockroachdb`
+Refactored, tested variant of the goroutine leak detector found in both `net/http` tests and the `cockroachdb`
 source tree.
 
 Takes a snapshot of running goroutines at the start of a test, and at the end -
-compares the two and viola. Ignores runtime/sys goroutines. Doesn't place nice
-with `t.Parallel()` right now, but there are plans to do so
+compares the two and *voila*. Ignores runtime/sys goroutines. Doesn't play nice
+with `t.Parallel()` right now, but there are plans to do so.
+
+### Installation
+
+```
+go get -u github.com/fortytw2/leaktest
+```
 
 ### Example
 
@@ -20,11 +26,11 @@ func TestPool(t *testing.T) {
         for {
             time.Sleep(time.Second)
         }
-    }
+    }()
 }
 ```
 
 
 LICENSE
 ------
-Header in leaktest.go - Apache something, per the Go Authors
+Same BSD-style as Go, see LICENSE
