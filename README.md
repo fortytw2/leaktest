@@ -1,4 +1,4 @@
-Leaktest
+Leaktest [![Build Status](https://travis-ci.org/fortytw2/leaktest.svg?branch=master)](https://travis-ci.org/fortytw2/leaktest)
 ------
 
 Refactored, tested variant of the goroutine leak detector found in both `net/http` tests and the `cockroachdb`
