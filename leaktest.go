@@ -44,7 +44,7 @@ func interestingGoroutines() (gs []string) {
 			strings.Contains(stack, "goroutine in C code") {
 			continue
 		}
-		gs = append(gs, g)
+		gs = append(gs, strings.TrimSpace(g))
 	}
 	sort.Strings(gs)
 	return
