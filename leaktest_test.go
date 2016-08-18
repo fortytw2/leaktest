@@ -76,3 +76,8 @@ func TestCheck(t *testing.T) {
 		}
 	}
 }
+
+func TestEmptyLeak(t *testing.T) {
+	defer Check(t)()
+	time.Sleep(time.Second)
+}
