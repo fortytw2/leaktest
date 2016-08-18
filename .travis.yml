@@ -7,6 +7,7 @@ go:
 
 script:
  - go test -v -race -parallel 5 -coverprofile=coverage.txt -covermode=atomic ./
+ - go test -v ./
 
 before_install:
   - pip install --user codecov
