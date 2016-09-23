@@ -34,6 +34,7 @@ func interestingGoroutines() (gs []string) {
 		if stack == "" ||
 			// Below are the stacks ignored by the upstream leaktest code.
 			strings.Contains(stack, "testing.Main(") ||
+			strings.Contains(stack, "testing.(*T).Run(") ||
 			strings.Contains(stack, "runtime.goexit") ||
 			strings.Contains(stack, "created by runtime.gc") ||
 			strings.Contains(stack, "interestingGoroutines") ||
