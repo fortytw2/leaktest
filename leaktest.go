@@ -57,10 +57,9 @@ type ErrorReporter interface {
 	Errorf(format string, args ...interface{})
 }
 
-// Check snapshots the currently-running goroutines and returns a
-// function to be run at the end of tests to see whether any
-// goroutines leaked.
-func Check(t ErrorReporter) func() {
+// CheckTimeout allows leaktest to run with a specific timeout, important if
+// the default 5 second timeout is slow for your purposes.
+func CheckTimeout(t ErrorReporter, dur time.Duration) func() {
 	orig := map[string]bool{}
 	for _, g := range interestingGoroutines() {
 		orig[g] = true
@@ -68,7 +67,7 @@ func Check(t ErrorReporter) func() {
 	return func() {
 		// Loop, waiting for goroutines to shut down.
 		// Wait up to 5 seconds, but finish as quickly as possible.
-		deadline := time.Now().Add(5 * time.Second)
+		deadline := time.Now().Add(dur)
 		for {
 			var leaked []string
 			for _, g := range interestingGoroutines() {
@@ -89,4 +88,11 @@ func Check(t ErrorReporter) func() {
 			return
 		}
 	}
+}
+
+// Check snapshots the currently-running goroutines and returns a
+// function to be run at the end of tests to see whether any
+// goroutines leaked. This defaults to 5 second timeout
+func Check(t ErrorReporter) func() {
+	return CheckTimeout(t, 5*time.Second)
 }
