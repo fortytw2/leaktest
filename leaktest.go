@@ -10,6 +10,7 @@
 package leaktest
 
 import (
+	"context"
 	"runtime"
 	"sort"
 	"strings"
@@ -59,34 +60,52 @@ type ErrorReporter interface {
 
 // Check snapshots the currently-running goroutines and returns a
 // function to be run at the end of tests to see whether any
-// goroutines leaked.
+// goroutines leaked, waiting up to 5 seconds in error conditions
 func Check(t ErrorReporter) func() {
+	return CheckTimeout(t, 5*time.Second)
+}
+
+// CheckTimeout is the same as Check, but with a configurable timeout
+func CheckTimeout(t ErrorReporter, dur time.Duration) func() {
+	ctx, cancel := context.WithTimeout(context.Background(), dur)
+	fn := CheckContext(ctx, t)
+	return func() {
+		fn()
+		cancel()
+	}
+}
+
+// CheckContext is the same as Check, but uses a context.Context for
+// cancellation and timeout control
+func CheckContext(ctx context.Context, t ErrorReporter) func() {
 	orig := map[string]bool{}
 	for _, g := range interestingGoroutines() {
 		orig[g] = true
 	}
 	return func() {
-		// Loop, waiting for goroutines to shut down.
-		// Wait up to 5 seconds, but finish as quickly as possible.
-		deadline := time.Now().Add(5 * time.Second)
+		var leaked []string
 		for {
-			var leaked []string
-			for _, g := range interestingGoroutines() {
-				if !orig[g] {
-					leaked = append(leaked, g)
+			select {
+			case <-ctx.Done():
+				t.Errorf("leaktest: timed out checking goroutines")
+			default:
+				leaked = make([]string, 0)
+				for _, g := range interestingGoroutines() {
+					if !orig[g] {
+						leaked = append(leaked, g)
+					}
 				}
-			}
-			if len(leaked) == 0 {
-				return
-			}
-			if time.Now().Before(deadline) {
-				time.Sleep(50 * time.Millisecond)
+				if len(leaked) == 0 {
+					return
+				}
+				// don't spin needlessly
+				time.Sleep(time.Millisecond * 50)
 				continue
 			}
-			for _, g := range leaked {
-				t.Errorf("Leaked goroutine: %v", g)
-			}
-			return
+			break
+		}
+		for _, g := range leaked {
+			t.Errorf("leaktest: leaked goroutine: %v", g)
 		}
 	}
 }
