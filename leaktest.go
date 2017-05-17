@@ -98,6 +98,8 @@ func CheckContext(ctx context.Context, t ErrorReporter) func() {
 				if len(leaked) == 0 {
 					return
 				}
+				// don't spin needlessly
+				time.Sleep(time.Millisecond * 50)
 				continue
 			}
 			break
