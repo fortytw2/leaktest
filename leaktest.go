@@ -13,42 +13,74 @@ import (
 	"context"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
 
+type goroutine struct {
+	id    uint64
+	stack string
+}
+
+type goroutineByID []goroutine
+
+func (g goroutineByID) Len() int           { return len(g) }
+func (g goroutineByID) Less(i, j int) bool { return g[i].id < g[j].id }
+func (g goroutineByID) Swap(i, j int)      { g[i], g[j] = g[j], g[i] }
+
+func interestingGoroutine(g string) (gr goroutine, ok bool) {
+	sl := strings.SplitN(g, "\n", 2)
+	if len(sl) != 2 {
+		return
+	}
+	stack := strings.TrimSpace(sl[1])
+	if strings.HasPrefix(stack, "testing.RunTests") {
+		return
+	}
+
+	if stack == "" ||
+		// Below are the stacks ignored by the upstream leaktest code.
+		strings.Contains(stack, "testing.Main(") ||
+		strings.Contains(stack, "testing.(*T).Run(") ||
+		strings.Contains(stack, "runtime.goexit") ||
+		strings.Contains(stack, "created by runtime.gc") ||
+		strings.Contains(stack, "interestingGoroutines") ||
+		strings.Contains(stack, "runtime.MHeap_Scavenger") ||
+		strings.Contains(stack, "signal.signal_recv") ||
+		strings.Contains(stack, "sigterm.handler") ||
+		strings.Contains(stack, "runtime_mcall") ||
+		strings.Contains(stack, "goroutine in C code") {
+		return
+	}
+
+	// Parse the goroutine's ID from the header line.
+	h := strings.SplitN(sl[0], " ", 3)
+	if len(h) < 3 {
+		return
+	}
+	id, err := strconv.ParseUint(h[1], 10, 64)
+	if err != nil {
+		return
+	}
+
+	ok = true
+	gr.id = id
+	gr.stack = strings.TrimSpace(g)
+	return
+}
+
 // interestingGoroutines returns all goroutines we care about for the purpose
 // of leak checking. It excludes testing or runtime ones.
-func interestingGoroutines() (gs []string) {
+func interestingGoroutines() (gs []goroutine) {
 	buf := make([]byte, 2<<20)
 	buf = buf[:runtime.Stack(buf, true)]
 	for _, g := range strings.Split(string(buf), "\n\n") {
-		sl := strings.SplitN(g, "\n", 2)
-		if len(sl) != 2 {
-			continue
+		if gr, ok := interestingGoroutine(g); ok {
+			gs = append(gs, gr)
 		}
-		stack := strings.TrimSpace(sl[1])
-		if strings.HasPrefix(stack, "testing.RunTests") {
-			continue
-		}
-
-		if stack == "" ||
-			// Below are the stacks ignored by the upstream leaktest code.
-			strings.Contains(stack, "testing.Main(") ||
-			strings.Contains(stack, "testing.(*T).Run(") ||
-			strings.Contains(stack, "runtime.goexit") ||
-			strings.Contains(stack, "created by runtime.gc") ||
-			strings.Contains(stack, "interestingGoroutines") ||
-			strings.Contains(stack, "runtime.MHeap_Scavenger") ||
-			strings.Contains(stack, "signal.signal_recv") ||
-			strings.Contains(stack, "sigterm.handler") ||
-			strings.Contains(stack, "runtime_mcall") ||
-			strings.Contains(stack, "goroutine in C code") {
-			continue
-		}
-		gs = append(gs, strings.TrimSpace(g))
 	}
-	sort.Strings(gs)
+	sort.Sort(goroutineByID(gs))
 	return
 }
 
@@ -78,9 +110,9 @@ func CheckTimeout(t ErrorReporter, dur time.Duration) func() {
 // CheckContext is the same as Check, but uses a context.Context for
 // cancellation and timeout control
 func CheckContext(ctx context.Context, t ErrorReporter) func() {
-	orig := map[string]bool{}
+	orig := map[uint64]bool{}
 	for _, g := range interestingGoroutines() {
-		orig[g] = true
+		orig[g.id] = true
 	}
 	return func() {
 		var leaked []string
@@ -91,8 +123,8 @@ func CheckContext(ctx context.Context, t ErrorReporter) func() {
 			default:
 				leaked = make([]string, 0)
 				for _, g := range interestingGoroutines() {
-					if !orig[g] {
-						leaked = append(leaked, g)
+					if !orig[g.id] {
+						leaked = append(leaked, g.stack)
 					}
 				}
 				if len(leaked) == 0 {

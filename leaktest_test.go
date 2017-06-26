@@ -83,3 +83,49 @@ func TestEmptyLeak(t *testing.T) {
 	defer CheckContext(ctx, t)()
 	time.Sleep(time.Second)
 }
+
+// TestChangingStackTrace validates that a change in a preexisting goroutine's
+// stack is not detected as a leaked goroutine.
+func TestChangingStackTrace(t *testing.T) {
+	started := make(chan struct{})
+	c1 := make(chan struct{})
+	c2 := make(chan struct{})
+	defer close(c2)
+	go func() {
+		close(started)
+		<-c1
+		<-c2
+	}()
+	<-started
+	func() {
+		defer CheckTimeout(t, time.Second)()
+		close(c1)
+	}()
+}
+
+func TestInterestingGoroutine(t *testing.T) {
+	s := "goroutine 123 [running]:\nmain.main()"
+	gr, ok := interestingGoroutine(s)
+	if !ok {
+		t.Error("should be ok")
+	}
+	if gr.id != 123 {
+		t.Errorf("goroutine id = %d; want %d", gr.id, 123)
+	}
+	if gr.stack != s {
+		t.Errorf("goroutine stack = %q; want %q", gr.stack, s)
+	}
+
+	stacks := []string{
+		"goroutine 123 [running]:",
+		"goroutine 123 [running]:\ntesting.RunTests",
+		"goroutine 856105:\nmain.main()",
+		"goroutine NaN [running]:\nmain.main()",
+	}
+	for _, s := range stacks {
+		_, ok := interestingGoroutine(s)
+		if ok {
+			t.Errorf("should not be ok: %q", s)
+		}
+	}
+}
