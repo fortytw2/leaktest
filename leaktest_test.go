@@ -28,15 +28,13 @@ var leakyFuncs = []func(){
 	},
 	// Select on a channel not referenced by other goroutines.
 	func() {
-		c := make(chan struct{}, 0)
-		select {
-		case <-c:
-		}
+		c := make(chan struct{})
+		<-c
 	},
 	// Blocked select on channels not referenced by other goroutines.
 	func() {
-		c := make(chan struct{}, 0)
-		c2 := make(chan struct{}, 0)
+		c := make(chan struct{})
+		c2 := make(chan struct{})
 		select {
 		case <-c:
 		case c2 <- struct{}{}:
