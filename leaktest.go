@@ -12,10 +12,12 @@ package leaktest
 import (
 	"context"
 	"fmt"
+	"os"
 	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 )
 
@@ -94,11 +96,40 @@ type ErrorReporter interface {
 	Errorf(format string, args ...interface{})
 }
 
+type testReporter struct {
+	failed bool
+	msg    string
+}
+
+func (tr *testReporter) Errorf(format string, args ...interface{}) {
+	tr.failed = true
+	tr.msg = fmt.Sprintf(format, args)
+}
+
 // Check snapshots the currently-running goroutines and returns a
 // function to be run at the end of tests to see whether any
 // goroutines leaked, waiting up to 5 seconds in error conditions
 func Check(t ErrorReporter) func() {
 	return CheckTimeout(t, 5*time.Second)
+}
+
+// CheckMain can be used to Check many tests at once, or when they run in
+// parallel, in exchange for providing relatively worse information on
+// failures compared to Check
+func CheckMain(m *testing.M) {
+	t := &testReporter{}
+	fn := Check(t)
+
+	code := m.Run()
+	if code != 0 {
+		os.Exit(code)
+	}
+
+	fn()
+	if t.failed {
+		fmt.Println(t.msg)
+		os.Exit(1)
+	}
 }
 
 // CheckTimeout is the same as Check, but with a configurable timeout
