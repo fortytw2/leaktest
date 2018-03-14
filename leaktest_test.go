@@ -76,6 +76,16 @@ func TestCheck(t *testing.T) {
 	}
 }
 
+// TestSlowTest verifies that the timeout works on slow tests: it should
+// be based on time after the test finishes rather than time after the test's
+// start.
+func TestSlowTest(t *testing.T) {
+	defer CheckTimeout(t, 1000 * time.Millisecond)()
+
+	go time.Sleep(1500 * time.Millisecond)
+	time.Sleep(750 * time.Millisecond)
+}
+
 func TestEmptyLeak(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
