@@ -3,21 +3,10 @@ package leaktest
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
 )
-
-type testReporter struct {
-	failed bool
-	msg    string
-}
-
-func (tr *testReporter) Errorf(format string, args ...interface{}) {
-	tr.failed = true
-	tr.msg = fmt.Sprintf(format, args)
-}
 
 var leakyFuncs = []func(){
 	// Infinite for loop
