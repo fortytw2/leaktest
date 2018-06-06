@@ -27,7 +27,7 @@ These tests fail, because they leak a goroutine
 // Default "Check" will poll for 5 seconds to check that all
 // goroutines are cleaned up
 func TestPool(t *testing.T) {
-	defer leaktest.Check(t)()
+    defer leaktest.Check(t)()
 
     go func() {
         for {
@@ -38,7 +38,7 @@ func TestPool(t *testing.T) {
 
 // Helper function to timeout after X duration
 func TestPoolTimeout(t *testing.T) {
-	defer leaktest.CheckTimeout(t, time.Second)()
+    defer leaktest.CheckTimeout(t, time.Second)()
 
     go func() {
         for {
@@ -50,7 +50,7 @@ func TestPoolTimeout(t *testing.T) {
 // Use Go 1.7+ context.Context for cancellation
 func TestPoolContext(t *testing.T) {
     ctx, _ := context.WithTimeout(context.Background(), time.Second)
-	defer leaktest.CheckContext(ctx, t)()
+    defer leaktest.CheckContext(ctx, t)()
 
     go func() {
         for {
