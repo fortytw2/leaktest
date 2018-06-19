@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package leaktest provides tools to detect leaked goroutines in tests.
-// To use it, call "defer util.Check(t)()" at the beginning of each
+// To use it, call "defer leaktest.Check(t)()" at the beginning of each
 // test that may use goroutines.
 // copied out of the cockroachdb source tree with slight modifications to be
 // more re-useable
