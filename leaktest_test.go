@@ -16,7 +16,7 @@ type testReporter struct {
 
 func (tr *testReporter) Errorf(format string, args ...interface{}) {
 	tr.failed = true
-	tr.msg = fmt.Sprintf(format, args)
+	tr.msg = fmt.Sprintf(format, args...)
 }
 
 var leakyFuncs = []func(){
