@@ -77,21 +77,28 @@ func TestCheck(t *testing.T) {
 			name:       "HTTP Client with KeepAlive Disabled.",
 			expectLeak: false,
 			f: func() {
-				http.DefaultTransport.(*http.Transport).DisableKeepAlives = true
-				http.Get("http://localhost:8091")
+				tr := &http.Transport{
+					DisableKeepAlives: true,
+				}
+				client := &http.Client{Transport: tr}
+				_, err := client.Get("http://localhost:8091")
+				if err != nil {
+					t.Error(err)
+				}
 			},
 		},
 		{
 			name:       "HTTP Client with KeepAlive Enabled.",
 			expectLeak: true,
 			f: func() {
-				http.DefaultTransport.(*http.Transport).DisableKeepAlives = false
-
-				_, err := http.Get("http://localhost:8091")
+				tr := &http.Transport{
+					DisableKeepAlives: false,
+				}
+				client := &http.Client{Transport: tr}
+				_, err := client.Get("http://localhost:8091")
 				if err != nil {
 					t.Error(err)
 				}
-
 			},
 		},
 	}
