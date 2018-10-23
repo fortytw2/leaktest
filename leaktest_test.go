@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -19,60 +20,106 @@ func (tr *testReporter) Errorf(format string, args ...interface{}) {
 	tr.msg = fmt.Sprintf(format, args...)
 }
 
-var leakyFuncs = []func(){
-	// Infinite for loop
-	func() {
-		for {
-			time.Sleep(time.Second)
-		}
-	},
-	// Select on a channel not referenced by other goroutines.
-	func() {
-		c := make(chan struct{})
-		<-c
-	},
-	// Blocked select on channels not referenced by other goroutines.
-	func() {
-		c := make(chan struct{})
-		c2 := make(chan struct{})
-		select {
-		case <-c:
-		case c2 <- struct{}{}:
-		}
-	},
-	// Blocking wait on sync.Mutex that isn't referenced by other goroutines.
-	func() {
-		var mu sync.Mutex
-		mu.Lock()
-		mu.Lock()
-	},
-	// Blocking wait on sync.RWMutex that isn't referenced by other goroutines.
-	func() {
-		var mu sync.RWMutex
-		mu.RLock()
-		mu.Lock()
-	},
-	func() {
-		var mu sync.Mutex
-		mu.Lock()
-		c := sync.NewCond(&mu)
-		c.Wait()
-	},
-}
-
 func TestCheck(t *testing.T) {
+	leakyFuncs := []struct {
+		f          func()
+		name       string
+		expectLeak bool
+	}{
+		{
+			name:       "Infinite for loop",
+			expectLeak: true,
+			f: func() {
+				for {
+					time.Sleep(time.Second)
+				}
+			},
+		},
+		{
+			name:       "Select on a channel not referenced by other goroutines.",
+			expectLeak: true,
+			f: func() {
+				c := make(chan struct{})
+				<-c
+			},
+		},
+		{
+			name:       "Blocked select on channels not referenced by other goroutines.",
+			expectLeak: true,
+			f: func() {
+				c := make(chan struct{})
+				c2 := make(chan struct{})
+				select {
+				case <-c:
+				case c2 <- struct{}{}:
+				}
+			},
+		},
+		{
+			name:       "Blocking wait on sync.Mutex that isn't referenced by other goroutines.",
+			expectLeak: true,
+			f: func() {
+				var mu sync.Mutex
+				mu.Lock()
+				mu.Lock()
+			},
+		},
+		{
+			name:       "Blocking wait on sync.RWMutex that isn't referenced by other goroutines.",
+			expectLeak: true,
+			f: func() {
+				var mu sync.RWMutex
+				mu.RLock()
+				mu.Lock()
+			},
+		},
+		{
+			name:       "HTTP Client with KeepAlive Disabled.",
+			expectLeak: false,
+			f: func() {
+				http.DefaultTransport.(*http.Transport).DisableKeepAlives = true
+				http.Get("http://localhost:8091")
+			},
+		},
+		{
+			name:       "HTTP Client with KeepAlive Enabled.",
+			expectLeak: true,
+			f: func() {
+				http.DefaultTransport.(*http.Transport).DisableKeepAlives = false
+
+				_, err := http.Get("http://localhost:8091")
+				if err != nil {
+					t.Error(err)
+				}
+
+			},
+		},
+	}
+
+	// Start our keep alive server for keep alive tests
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go startKeepAliveEnabledServer(ctx)
+
 	// this works because the running goroutine is left running at the
 	// start of the next test case - so the previous leaks don't affect the
 	// check for the next one
-	for i, fn := range leakyFuncs {
-		checker := &testReporter{}
-		snapshot := CheckTimeout(checker, time.Second)
-		go fn()
+	for _, leakyTestcase := range leakyFuncs {
 
-		snapshot()
-		if !checker.failed {
-			t.Errorf("didn't catch sleeping goroutine, test #%d", i)
-		}
+		t.Run(leakyTestcase.name, func(t *testing.T) {
+			checker := &testReporter{}
+			snapshot := CheckTimeout(checker, time.Second)
+			go leakyTestcase.f()
+
+			snapshot()
+
+			if !checker.failed && leakyTestcase.expectLeak {
+				t.Error("didn't catch sleeping goroutine")
+			}
+			if checker.failed && !leakyTestcase.expectLeak {
+				t.Error("got leak but didn't expect it")
+			}
+		})
 	}
 }
 
@@ -80,7 +127,7 @@ func TestCheck(t *testing.T) {
 // be based on time after the test finishes rather than time after the test's
 // start.
 func TestSlowTest(t *testing.T) {
-	defer CheckTimeout(t, 1000 * time.Millisecond)()
+	defer CheckTimeout(t, 1000*time.Millisecond)()
 
 	go time.Sleep(1500 * time.Millisecond)
 	time.Sleep(750 * time.Millisecond)
@@ -132,6 +179,10 @@ func TestInterestingGoroutine(t *testing.T) {
 		{
 			stack: "goroutine 123 [running]:",
 			err:   errors.New(`error parsing stack: "goroutine 123 [running]:"`),
+		},
+		{
+			stack: "goroutine 299 [IO wait]:\nnet/http.(*persistConn).readLoop(0xc420556240)",
+			err:   nil,
 		},
 		{
 			stack: "goroutine 123 [running]:\ntesting.RunTests",
