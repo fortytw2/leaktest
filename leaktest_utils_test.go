@@ -2,8 +2,8 @@ package leaktest
 
 import (
 	"context"
-	"log"
 	"net/http"
+	"net/http/httptest"
 	"time"
 )
 
@@ -13,30 +13,18 @@ func index() http.Handler {
 	})
 }
 
-func startKeepAliveEnabledServer(ctx context.Context) {
-	router := http.NewServeMux()
-	router.Handle("/", index())
+func startKeepAliveEnabledServer(ctx context.Context) *httptest.Server {
+	server := httptest.NewUnstartedServer(index())
+	server.Config.ReadTimeout = 5 * time.Second
+	server.Config.WriteTimeout = 10 * time.Second
+	server.Config.IdleTimeout = 15 * time.Second
+	server.Config.SetKeepAlivesEnabled(true)
 
-	server := &http.Server{
-		Addr:         ":8091",
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  15 * time.Second,
-	}
-
+	server.Start()
 	go func() {
 		<-ctx.Done()
-
-		server.SetKeepAlivesEnabled(false)
-		if err := server.Shutdown(ctx); err != nil {
-			log.Fatalf("Could not gracefully shutdown the server: %v\n", err)
-		}
+		server.Close()
 	}()
 
-	log.Println("Server is ready to handle requests at", server.Addr)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("Could not listen on %s: %v\n", server.Addr, err)
-	}
-
-	log.Println("Server stopped")
+	return server
 }

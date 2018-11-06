@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -19,6 +20,9 @@ func (tr *testReporter) Errorf(format string, args ...interface{}) {
 	tr.failed = true
 	tr.msg = fmt.Sprintf(format, args...)
 }
+
+// Client for the TestServer
+var testServer *httptest.Server
 
 func TestCheck(t *testing.T) {
 	leakyFuncs := []struct {
@@ -81,7 +85,7 @@ func TestCheck(t *testing.T) {
 					DisableKeepAlives: true,
 				}
 				client := &http.Client{Transport: tr}
-				_, err := client.Get("http://localhost:8091")
+				_, err := client.Get(testServer.URL)
 				if err != nil {
 					t.Error(err)
 				}
@@ -95,7 +99,7 @@ func TestCheck(t *testing.T) {
 					DisableKeepAlives: false,
 				}
 				client := &http.Client{Transport: tr}
-				_, err := client.Get("http://localhost:8091")
+				_, err := client.Get(testServer.URL)
 				if err != nil {
 					t.Error(err)
 				}
@@ -106,7 +110,7 @@ func TestCheck(t *testing.T) {
 	// Start our keep alive server for keep alive tests
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go startKeepAliveEnabledServer(ctx)
+	testServer = startKeepAliveEnabledServer(ctx)
 
 	// this works because the running goroutine is left running at the
 	// start of the next test case - so the previous leaks don't affect the
@@ -134,7 +138,7 @@ func TestCheck(t *testing.T) {
 // be based on time after the test finishes rather than time after the test's
 // start.
 func TestSlowTest(t *testing.T) {
-	defer CheckTimeout(t, 1000*time.Millisecond)()
+	defer CheckTimeout(t, 1000 * time.Millisecond)()
 
 	go time.Sleep(1500 * time.Millisecond)
 	time.Sleep(750 * time.Millisecond)
