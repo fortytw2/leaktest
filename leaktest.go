@@ -126,11 +126,12 @@ func CheckContext(ctx context.Context, t ErrorReporter) func() {
 	}
 	return func() {
 		var leaked []string
+		ticker := time.NewTicker(time.Millisecond * 50)
+		defer ticker.Stop()
+
 		for {
 			select {
-			case <-ctx.Done():
-				t.Errorf("leaktest: %v", ctx.Err())
-			default:
+			case <-ticker.C:
 				leaked = make([]string, 0)
 				for _, g := range interestingGoroutines(t) {
 					if !orig[g.id] {
@@ -140,12 +141,13 @@ func CheckContext(ctx context.Context, t ErrorReporter) func() {
 				if len(leaked) == 0 {
 					return
 				}
-				// don't spin needlessly
-				time.Sleep(time.Millisecond * 50)
 				continue
+			case <-ctx.Done():
+				t.Errorf("leaktest: %v", ctx.Err())
 			}
 			break
 		}
+
 		for _, g := range leaked {
 			t.Errorf("leaktest: leaked goroutine: %v", g)
 		}
