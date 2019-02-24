@@ -129,7 +129,7 @@ func CheckContext(ctx context.Context, t ErrorReporter) func() {
 		for {
 			select {
 			case <-ctx.Done():
-				t.Errorf("leaktest: timed out checking goroutines")
+				t.Errorf("leaktest: %v", ctx.Err())
 			default:
 				leaked = make([]string, 0)
 				for _, g := range interestingGoroutines(t) {
