@@ -19,6 +19,9 @@ import (
 	"time"
 )
 
+// TickerInterval defines the interval used by the ticker in Check* functions.
+var TickerInterval = time.Millisecond * 50
+
 type goroutine struct {
 	id    uint64
 	stack string
@@ -126,7 +129,7 @@ func CheckContext(ctx context.Context, t ErrorReporter) func() {
 	}
 	return func() {
 		var leaked []string
-		ticker := time.NewTicker(time.Millisecond * 50)
+		ticker := time.NewTicker(TickerInterval)
 		defer ticker.Stop()
 
 		for {
