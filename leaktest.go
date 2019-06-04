@@ -129,6 +129,16 @@ func CheckContext(ctx context.Context, t ErrorReporter) func() {
 	}
 	return func() {
 		var leaked []string
+		// fast check if we have no leaks
+		leaked = make([]string, 0)
+		for _, g := range interestingGoroutines(t) {
+			if !orig[g.id] {
+				leaked = append(leaked, g.stack)
+			}
+		}
+		if len(leaked) == 0 {
+			return
+		}
 		ticker := time.NewTicker(TickerInterval)
 		defer ticker.Stop()
 
