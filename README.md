@@ -48,7 +48,8 @@ func TestPoolTimeout(t *testing.T) {
 
 // Use Go 1.7+ context.Context for cancellation
 func TestPoolContext(t *testing.T) {
-    ctx, _ := context.WithTimeout(context.Background(), time.Second)
+    ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+    defer cancel()
     defer leaktest.CheckContext(ctx, t)()
 
     go func() {
