@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
@@ -28,6 +29,7 @@ func TestCheck(t *testing.T) {
 	leakyFuncs := []struct {
 		f          func()
 		name       string
+		opts       []SkipGoroutineOption
 		expectLeak bool
 	}{
 		{
@@ -105,6 +107,21 @@ func TestCheck(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "Skip leak with option",
+			opts: []SkipGoroutineOption{
+				func(stack string) bool {
+					re := regexp.MustCompile("created by .*leaktest\\.TestCheck")
+					return re.MatchString(stack)
+				},
+			},
+			expectLeak: false,
+			f: func() {
+				go func() {
+					time.Sleep(2 * time.Second)
+				}()
+			},
+		},
 	}
 
 	// Start our keep alive server for keep alive tests
@@ -119,7 +136,7 @@ func TestCheck(t *testing.T) {
 
 		t.Run(leakyTestcase.name, func(t *testing.T) {
 			checker := &testReporter{}
-			snapshot := CheckTimeout(checker, time.Second)
+			snapshot := CheckTimeout(checker, time.Second, leakyTestcase.opts...)
 			go leakyTestcase.f()
 
 			snapshot()
@@ -128,7 +145,7 @@ func TestCheck(t *testing.T) {
 				t.Error("didn't catch sleeping goroutine")
 			}
 			if checker.failed && !leakyTestcase.expectLeak {
-				t.Error("got leak but didn't expect it")
+				t.Errorf("got leak but didn't expect it:\n\t%v", checker.msg)
 			}
 		})
 	}
@@ -138,7 +155,7 @@ func TestCheck(t *testing.T) {
 // be based on time after the test finishes rather than time after the test's
 // start.
 func TestSlowTest(t *testing.T) {
-	defer CheckTimeout(t, 1000 * time.Millisecond)()
+	defer CheckTimeout(t, 1000*time.Millisecond)()
 
 	go time.Sleep(1500 * time.Millisecond)
 	time.Sleep(750 * time.Millisecond)
