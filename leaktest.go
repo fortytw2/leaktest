@@ -27,13 +27,61 @@ type goroutine struct {
 	stack string
 }
 
+func (gr *goroutine) equal(other *goroutine) bool {
+	if gr == nil {
+		return other == nil
+	}
+
+	if other == nil {
+		return false
+	}
+
+	return gr.id == other.id && gr.stack == other.stack
+}
+
 type goroutineByID []*goroutine
 
 func (g goroutineByID) Len() int           { return len(g) }
 func (g goroutineByID) Less(i, j int) bool { return g[i].id < g[j].id }
 func (g goroutineByID) Swap(i, j int)      { g[i], g[j] = g[j], g[i] }
 
-func interestingGoroutine(g string) (*goroutine, error) {
+type LeakCheckConfiguration struct {
+	RoutinesSafeToIgnore []string
+}
+
+var (
+	DefaultCheckConfiguration = LeakCheckConfiguration{
+		RoutinesSafeToIgnore: []string{
+			// Ignore HTTP keep alives
+			").readLoop(",
+			").writeLoop(",
+
+			// Below are the stacks ignored by the upstream leaktest code.
+			"testing.Main(",
+			"testing.(*T).Run(",
+			"runtime.goexit",
+			"created by runtime.gc",
+			"interestingGoroutines",
+			"runtime.MHeap_Scavenger",
+			"signal.signal_recv",
+			"sigterm.handler",
+			"runtime_mcall",
+			"goroutine in C code",
+		},
+	}
+)
+
+func containsAny(haystack string, needles []string) bool {
+	for _, needle := range needles {
+		if strings.Contains(haystack, needle) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (lcc LeakCheckConfiguration) interestingGoroutine(g string) (*goroutine, error) {
 	sl := strings.SplitN(g, "\n", 2)
 	if len(sl) != 2 {
 		return nil, fmt.Errorf("error parsing stack: %q", g)
@@ -43,21 +91,7 @@ func interestingGoroutine(g string) (*goroutine, error) {
 		return nil, nil
 	}
 
-	if stack == "" ||
-		// Ignore HTTP keep alives
-		strings.Contains(stack, ").readLoop(") ||
-		strings.Contains(stack, ").writeLoop(") ||
-		// Below are the stacks ignored by the upstream leaktest code.
-		strings.Contains(stack, "testing.Main(") ||
-		strings.Contains(stack, "testing.(*T).Run(") ||
-		strings.Contains(stack, "runtime.goexit") ||
-		strings.Contains(stack, "created by runtime.gc") ||
-		strings.Contains(stack, "interestingGoroutines") ||
-		strings.Contains(stack, "runtime.MHeap_Scavenger") ||
-		strings.Contains(stack, "signal.signal_recv") ||
-		strings.Contains(stack, "sigterm.handler") ||
-		strings.Contains(stack, "runtime_mcall") ||
-		strings.Contains(stack, "goroutine in C code") {
+	if stack == "" || containsAny(stack, lcc.RoutinesSafeToIgnore) {
 		return nil, nil
 	}
 
@@ -76,12 +110,12 @@ func interestingGoroutine(g string) (*goroutine, error) {
 
 // interestingGoroutines returns all goroutines we care about for the purpose
 // of leak checking. It excludes testing or runtime ones.
-func interestingGoroutines(t ErrorReporter) []*goroutine {
+func (lcc LeakCheckConfiguration) interestingGoroutines(t ErrorReporter) []*goroutine {
 	buf := make([]byte, 2<<20)
 	buf = buf[:runtime.Stack(buf, true)]
 	var gs []*goroutine
 	for _, g := range strings.Split(string(buf), "\n\n") {
-		gr, err := interestingGoroutine(g)
+		gr, err := lcc.interestingGoroutine(g)
 		if err != nil {
 			t.Errorf("leaktest: %s", err)
 			continue
@@ -108,23 +142,13 @@ func leakedGoroutines(orig map[uint64]bool, interesting []*goroutine) ([]string,
 	return leaked, flag
 }
 
-// ErrorReporter is a tiny subset of a testing.TB to make testing not such a
-// massive pain
-type ErrorReporter interface {
-	Errorf(format string, args ...interface{})
+func (lcc LeakCheckConfiguration) Check(t ErrorReporter) func() {
+	return lcc.CheckTimeout(t, 5*time.Second)
 }
 
-// Check snapshots the currently-running goroutines and returns a
-// function to be run at the end of tests to see whether any
-// goroutines leaked, waiting up to 5 seconds in error conditions
-func Check(t ErrorReporter) func() {
-	return CheckTimeout(t, 5*time.Second)
-}
-
-// CheckTimeout is the same as Check, but with a configurable timeout
-func CheckTimeout(t ErrorReporter, dur time.Duration) func() {
+func (lcc LeakCheckConfiguration) CheckTimeout(t ErrorReporter, dur time.Duration) func() {
 	ctx, cancel := context.WithCancel(context.Background())
-	fn := CheckContext(ctx, t)
+	fn := lcc.CheckContext(ctx, t)
 	return func() {
 		timer := time.AfterFunc(dur, cancel)
 		fn()
@@ -134,18 +158,16 @@ func CheckTimeout(t ErrorReporter, dur time.Duration) func() {
 	}
 }
 
-// CheckContext is the same as Check, but uses a context.Context for
-// cancellation and timeout control
-func CheckContext(ctx context.Context, t ErrorReporter) func() {
+func (lcc LeakCheckConfiguration) CheckContext(ctx context.Context, t ErrorReporter) func() {
 	orig := map[uint64]bool{}
-	for _, g := range interestingGoroutines(t) {
+	for _, g := range lcc.interestingGoroutines(t) {
 		orig[g.id] = true
 	}
 	return func() {
 		var leaked []string
 		var ok bool
 		// fast check if we have no leaks
-		if leaked, ok = leakedGoroutines(orig, interestingGoroutines(t)); ok {
+		if leaked, ok = leakedGoroutines(orig, lcc.interestingGoroutines(t)); ok {
 			return
 		}
 		ticker := time.NewTicker(TickerInterval)
@@ -154,7 +176,7 @@ func CheckContext(ctx context.Context, t ErrorReporter) func() {
 		for {
 			select {
 			case <-ticker.C:
-				if leaked, ok = leakedGoroutines(orig, interestingGoroutines(t)); ok {
+				if leaked, ok = leakedGoroutines(orig, lcc.interestingGoroutines(t)); ok {
 					return
 				}
 				continue
@@ -168,4 +190,28 @@ func CheckContext(ctx context.Context, t ErrorReporter) func() {
 			t.Errorf("leaktest: leaked goroutine: %v", g)
 		}
 	}
+}
+
+// ErrorReporter is a tiny subset of a testing.TB to make testing not such a
+// massive pain
+type ErrorReporter interface {
+	Errorf(format string, args ...interface{})
+}
+
+// Check snapshots the currently-running goroutines and returns a
+// function to be run at the end of tests to see whether any
+// goroutines leaked, waiting up to 5 seconds in error conditions
+func Check(t ErrorReporter) func() {
+	return DefaultCheckConfiguration.Check(t)
+}
+
+// CheckTimeout is the same as Check, but with a configurable timeout
+func CheckTimeout(t ErrorReporter, dur time.Duration) func() {
+	return DefaultCheckConfiguration.CheckTimeout(t, dur)
+}
+
+// CheckContext is the same as Check, but uses a context.Context for
+// cancellation and timeout control
+func CheckContext(ctx context.Context, t ErrorReporter) func() {
+	return DefaultCheckConfiguration.CheckContext(ctx, t)
 }

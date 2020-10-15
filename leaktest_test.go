@@ -138,7 +138,7 @@ func TestCheck(t *testing.T) {
 // be based on time after the test finishes rather than time after the test's
 // start.
 func TestSlowTest(t *testing.T) {
-	defer CheckTimeout(t, 1000 * time.Millisecond)()
+	defer CheckTimeout(t, 1000*time.Millisecond)()
 
 	go time.Sleep(1500 * time.Millisecond)
 	time.Sleep(750 * time.Millisecond)
@@ -172,7 +172,7 @@ func TestChangingStackTrace(t *testing.T) {
 
 func TestInterestingGoroutine(t *testing.T) {
 	s := "goroutine 123 [running]:\nmain.main()"
-	gr, err := interestingGoroutine(s)
+	gr, err := DefaultCheckConfiguration.interestingGoroutine(s)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err)
 	}
@@ -213,7 +213,7 @@ func TestInterestingGoroutine(t *testing.T) {
 		},
 	}
 	for i, s := range stacks {
-		gr, err := interestingGoroutine(s.stack)
+		gr, err := DefaultCheckConfiguration.interestingGoroutine(s.stack)
 		if s.err == nil && err != nil {
 			t.Errorf("%d: error = %v; want nil", i, err)
 		} else if s.err != nil && (err == nil || err.Error() != s.err.Error()) {
@@ -223,5 +223,41 @@ func TestInterestingGoroutine(t *testing.T) {
 			t.Errorf("%d: gr = %v; want nil", i, gr)
 		}
 
+	}
+}
+
+func TestInterestingGoroutineWithConfiguration(t *testing.T) {
+	t.Parallel()
+
+	configuration := LeakCheckConfiguration{
+		RoutinesSafeToIgnore: []string{
+			"pkg.AlwaysLeaks",
+		},
+	}
+
+	tcs := []struct {
+		stack string
+		gr    *goroutine
+	}{
+		{
+			stack: "goroutine 123 [running]:\npkg.AlwaysLeaks",
+			gr:    nil,
+		},
+		{
+			stack: "goroutine 123 [running]:\npkg.ShouldNotLeak",
+			gr: &goroutine{
+				id:    123,
+				stack: "goroutine 123 [running]:\npkg.ShouldNotLeak",
+			},
+		},
+	}
+
+	for i, tc := range tcs {
+		actual, err := configuration.interestingGoroutine(tc.stack)
+		if err != nil {
+			t.Errorf("%d: unexpected error: %v", i, err)
+		} else if !tc.gr.equal(actual) {
+			t.Errorf("%d: have %v want %v", i, actual, tc.gr)
+		}
 	}
 }
