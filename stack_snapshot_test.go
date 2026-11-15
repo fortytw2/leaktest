@@ -40,7 +40,11 @@ func TestLargeStackSnapshot(t *testing.T) {
 	// Confirm that real runtime output exceeds the old fixed-size buffer.
 	dump := make([]byte, 8<<20)
 	n := runtime.Stack(dump, true)
-	if n <= 2<<20 || n == len(dump) {
+	for n == len(dump) {
+		dump = make([]byte, 2*len(dump))
+		n = runtime.Stack(dump, true)
+	}
+	if n <= 2<<20 {
 		t.Fatalf("unexpected fixture stack size: %d", n)
 	}
 	reporter := &testReporter{}
