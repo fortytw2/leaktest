@@ -78,7 +78,14 @@ func interestingGoroutine(g string) (*goroutine, error) {
 // of leak checking. It excludes testing or runtime ones.
 func interestingGoroutines(t ErrorReporter) []*goroutine {
 	buf := make([]byte, 2<<20)
-	buf = buf[:runtime.Stack(buf, true)]
+	for {
+		n := runtime.Stack(buf, true)
+		if n < len(buf) {
+			buf = buf[:n]
+			break
+		}
+		buf = make([]byte, 2*len(buf))
+	}
 	var gs []*goroutine
 	for _, g := range strings.Split(string(buf), "\n\n") {
 		gr, err := interestingGoroutine(g)
